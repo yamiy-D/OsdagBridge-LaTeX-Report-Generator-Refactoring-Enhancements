@@ -1,44 +1,62 @@
 from typing import List
 
-from osdagbridge.core.utils.common import (
-    KEY_DESIGN_MODE
-)
+from osdagbridge.core.reports.styles import COMPACT_TABCOLSEP_PT, make_simple_table
+from osdagbridge.core.utils.common import KEY_DESIGN_MODE
 
 
 def ch8_design_log(log_entries: List[str], input_dict: dict) -> str:
-    """Render Chapter 8 using real log_entries, matching Osdag color convention."""
-
-    lines_tex = []
-    if log_entries:
-        for entry in log_entries:
-            for raw_line in entry.split('\n'):
-                line = raw_line.strip()
-                if not line:
-                    continue
-                escaped = (line
-                    .replace('_', r'\_')
-                    .replace('%', r'\%')
-                    .replace('&', r'\&')
-                    .replace('#', r'\#'))
-                upper = line.upper()
-                if 'WARNING' in upper:
-                    lines_tex.append(
-                        rf'\textcolor{{blue}}{{{escaped}}}\\')
-                elif 'ERROR' in upper:
-                    lines_tex.append(
-                        rf'\textcolor{{red}}{{{escaped}}}\\')
-                elif 'INFO' in upper:
-                    lines_tex.append(
-                        rf'\textcolor{{osdagGreen}}{{{escaped}}}\\')
-                else:
-                    continue  # skip lines without a known level — Osdag patter
-
-    mode = str(input_dict.get(KEY_DESIGN_MODE, 'Optimized')).strip().lower()
+    """Render Chapter 8 (Standards & Assumptions)."""
+    mode = str((input_dict or {}).get(KEY_DESIGN_MODE, 'Optimized')).strip().lower()
     is_custom = mode in {'custom', 'customized'}
     return _ch8_assumptions(is_custom)
 
 
 def _ch8_assumptions(is_custom: bool) -> str:
+    irc_rows = [
+        ("IRC 5", "2015", "General Features of Design -- carriageway widths, kerb, footpath dimensions"),
+        ("IRC 6", "2017", "Loads and Load Combinations -- dead load, live load, impact, wind, temperature, etc."),
+        ("IRC 22", "2015", "Composite Construction (LS) -- composite section properties, ULS/SLS design, shear connectors"),
+        ("IRC 24", "2010", "Steel Road Bridges (LS) -- stiffener design, skew angle limits, diaphragm requirements"),
+        ("IRC 112", "2020", "Concrete Road Bridges -- deck slab flexure, shear, crack width, reinforcement"),
+        ("IRC SP 114", "2018", "Seismic Design of Road Bridges"),
+    ]
+    irc_body = "\n".join(
+        rf"{c} & {y} & {t} \\[4pt]" + "\n" + r"\hline"
+        for c, y, t in irc_rows
+    )
+    irc_table = make_simple_table(
+        headers=["Code", "Year", "Title / Scope"],
+        body_tex=irc_body,
+        col_alignments=["C", "C", "L"],
+        col_widths_cm=[2.6, 1.5, 11.2],
+        caption="IRC Codes",
+        label="tab:irc-codes",
+        tabcolsep_pt=COMPACT_TABCOLSEP_PT,
+        font_size=r"\small",
+    )
+
+    is_rows = [
+        ("IS 800", "2007", "Steel construction -- tension, compression, bending, shear, LTB, stiffeners, combined checks"),
+        ("IS 456", "2000", "Concrete -- simplified stress-block for deck moment capacity"),
+        ("IS 1786", "2008", "Reinforcement steel properties"),
+        ("IS 1893 (Part 3)", "2014", "Earthquake resistant design"),
+        ("IS 2062", "2011", "Structural steel -- yield and ultimate strength by grade"),
+    ]
+    is_body = "\n".join(
+        rf"{c} & {y} & {t} \\[4pt]" + "\n" + r"\hline"
+        for c, y, t in is_rows
+    )
+    is_table = make_simple_table(
+        headers=["Code", "Year", "Scope"],
+        body_tex=is_body,
+        col_alignments=["C", "C", "L"],
+        col_widths_cm=[3.2, 1.5, 10.6],
+        caption="IS Codes",
+        label="tab:is-codes",
+        tabcolsep_pt=COMPACT_TABCOLSEP_PT,
+        font_size=r"\small",
+    )
+
     assumptions = [
         r"""
 \chapter{Standards \& Assumptions}
@@ -50,54 +68,14 @@ design modules, and notes the limitations of the current software version.
 \section{Design Standards}
 \label{sec:design_standards}
 
-The following Indian Road Congress (IRC) codes and Indian Standards (IS) 
+The following Indian Road Congress (IRC) codes and Indian Standards (IS)
 form the basis of all design calculations in this software.
 
-\vspace{0.5cm}
-
-\begingroup
-\setlength{\tabcolsep}{3.5pt}
-\begin{table}[H]
-\caption{\textbf{IRC Codes}}
-\begin{tabular}{|c|c|p{13cm}|}
-\hline
-\textbf{Code} & \textbf{Year} & \textbf{Title / Scope} \\ 
-\hline
-IRC 5 & 2015 & General Features of Design - carriageway widths, kerb, footpath dimensions \\ 
-\hline
-IRC 6 & 2017 & Loads and Load Combinations - dead load, live load, impact, wind, temperature, etc. \\ 
-\hline
-IRC 22 & 2015 & Composite Construction (LS) - Composite section properties, ULS/SLS design, shear connectors \\ 
-\hline
-IRC 24 & 2010 & Steel Road Bridges (LS) - Stiffener design, skew angle limits, diaphragm requirements \\ 
-\hline
-IRC 112 & 2020 & Concrete Road Bridges - Deck slab flexure, shear, crack width, reinforcement \\ 
-\hline
-IRC SP 114 & 2018 & Seismic Design of Road Bridges \\ 
-\hline
-\end{tabular}
-\end{table}
-
-\begingroup
-\setlength{\tabcolsep}{3.5pt}
-\begin{table}[H]
-\caption{\textbf{IS Codes}}
-\begin{tabular}{|c|c|p{13cm}|}
-\hline
-\textbf{Code} & \textbf{Year} & \textbf{Scope} \\
-\hline
-IS 800 & 2007 & Steel construction - tension, compression, bending, shear, LTB, stiffeners, combined checks \\
-\hline
-IS 456 & 2000 & Concrete - simplified stress-block for deck moment capacity \\
-\hline
-IS 1786 & 2008 & Reinforcement steel properties \\
-\hline
-IS 1893 (Part 3) & 2014 & Earthquake resistant design \\
-\hline
-IS 2062 & 2011 & Structural steel - yield and ultimate strength by grade \\
-\hline
-\end{tabular}
-\end{table}
+"""
+        + irc_table
+        + "\n\n"
+        + is_table
+        + r"""
 
 \clearpage
 \section{Analysis and Design Assumptions of This Version}
@@ -109,7 +87,7 @@ IS 2062 & 2011 & Structural steel - yield and ultimate strength by grade \\
     \item All girders are modelled as simply supported; continuous spans are not currently supported.
     \item A 3D grillage model (OSPGrillage) is used for load distribution. Grillage members carry composite section properties after the construction stage.
     \item The transverse member forces are computed using an approximate 2D frame analogy. For irregular or skewed geometries, a 3D FEM is recommended.
-    \item Fixed bearing stiffness is modelled as $k = 1{,}000{,}000 \,\text{kN/m}$ (virtually rigid); free/expansion bearing as $k = 100 \, \text{kN/m}$.
+    \item Fixed bearing stiffness is modelled as $k = 1{,}000{,}000 \,\text{kN/m}$ (virtually rigid); free / expansion bearing as $k = 100 \, \text{kN/m}$.
     \item Construction stage sequence analysis is approximate. Detailed staged analysis should be performed for long-term deflection checks.
 \end{itemize}
 
@@ -191,5 +169,3 @@ IS 2062 & 2011 & Structural steel - yield and ultimate strength by grade \\
 """)
 
     return "\n".join(assumptions)
-
-

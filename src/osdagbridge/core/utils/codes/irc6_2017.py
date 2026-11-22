@@ -520,37 +520,31 @@ class IRC6_2017:
         return round(IM, 3)
     
     @staticmethod
-    def cl_208_3_impact_factor(span):
+    def cl_208_3_impact_factor(span, vehicle_type="tracked"):
         """
-        Returns the impact factor (IM) for Class AA and Class 70R loading 
-        according to IRC:6-2017 Clause 208.3.
+        Returns the impact factor (IM) for Class AA and Class 70R loading
+        according to IRC:6-2017 Clause 208.3 (steel bridges).
 
         Parameters:
             span (float): span in metres
+            vehicle_type (str): 'tracked' (default, preserving 1-arg callers)
+                or 'wheeled'
         Returns:
             float: impact factor (IM)
         """
-        if span < 9.0: #span less than 9 m
-            if KEY_VEHICLE[1]: # Class70R(T)
-                if span < 5.0:
-                    IM = 0.25
-                if span >= 5.0:
-                    IM = 0.10
-            elif KEY_VEHICLE[0]: # Class70R(W)
+        is_wheeled = str(vehicle_type or "tracked").strip().lower().startswith("wheel")
+        if not is_wheeled:
+            # Tracked vehicle (Class AA / Class 70R Tracked) on steel bridges
+            IM = 0.25 if span < 5.0 else 0.10
+        else:
+            # Wheeled vehicle (Class AA / Class 70R Wheeled or Bogie) on steel bridges
+            if span < 23.0:
                 IM = 0.25
-        
-        elif 9.0 <= span <= 45.0: #span between 9 m and 45 m
-            if KEY_VEHICLE[1]: # Class70R(T)
-                IM = 0.10
-            elif KEY_VEHICLE[0]: # Class70R(W)
-                if span < 23.0:
-                    IM = 0.25
-                if span >= 23.0:
-                    IM = 9.0/(13.5 + span)
-        else: #span greater than 45 m
-            span = 45.0
-            IM = 9.0/(13.5 + span)
-        
+            elif span <= 45.0:
+                IM = 9.0 / (13.5 + span)
+            else:
+                IM = 9.0 / (13.5 + 45.0)
+
         return round(IM, 3)
             
     
@@ -889,18 +883,114 @@ class IRC6_2017:
         """
         Returns braking force as per IRC:6-2017 Clause 211.2.
         Returns:
-            float: Braking force in t (rounded to 3 decimal places)
+            float: Braking force in tonnes (t), rounded to 3 decimal places.
         """
-        for lane in range(1, design_lanes + 1):
-            if lane == 1 or lane == 2:
-                wheel_load = IRC6_2017.cl_204_1_ClassA_vehicle()['wheel_loads']
-                braking_force_1 = 0.20 * sum(wheel_load)  # t
-            if lane > 2:
-                wheel_load = IRC6_2017.cl_204_1_Class70R_vehicle_wheel()['wheel_loads']
-                braking_force_2 = 0.05 * sum(wheel_load)  # t
-            
-            total_braking_force = braking_force_1 + braking_force_2
+        if not design_lanes or design_lanes < 1:
+            return 0.0
+        # wheel_loads in cl_204_1_* are stored in Newtons (t = kN * g = 9810 N).
+        class_a_t = sum(IRC6_2017.cl_204_1_ClassA_vehicle()['wheel_loads']) / t
+        class_70r_t = sum(IRC6_2017.cl_204_1_Class70R_vehicle_wheel()['wheel_loads']) / t
+
+        braking_force_1 = 0.0
+        braking_force_2 = 0.0
+        for lane in range(1, int(design_lanes) + 1):
+            if lane == 1:
+                braking_force_1 += 0.20 * class_a_t
+            elif lane == 2:
+                braking_force_1 += 0.10 * class_a_t
+            else:
+                braking_force_2 += 0.05 * class_70r_t
+
+        total_braking_force = braking_force_1 + braking_force_2
         return round(total_braking_force, 3)
+
+    @staticmethod
+    def get_live_load_vehicle_catalog():
+        """Canonical IRC:6-2017 Cl. 204 live-load vehicle metadata for reporting.
+
+        Returns a dict keyed by canonical UI vehicle key suffix with:
+          - name: display name
+          - total_load_kN: total vehicle load in kN
+          - impact_kind: 'class_a' | 'wheeled' | 'tracked' | 'none'
+          - braking_default: bool (whether braking is considered by default)
+          - braking_fraction: fraction of total_load_kN when braking applies
+          - clause: IRC 6 clause reference
+        """
+        class_a_kn = sum(IRC6_2017.cl_204_1_ClassA_vehicle()['wheel_loads']) / kN
+        c70r_w_kn = sum(IRC6_2017.cl_204_1_Class70R_vehicle_wheel()['wheel_loads']) / kN
+        c70r_t_kn = 70.0 * g  # 70 tonnes per IRC 6 Cl. 204.1
+        c70r_b_kn = 40.0 * g  # 40 tonnes bogie (2 x 20 t) per IRC 6 Cl. 204.1
+        caa_w_kn = 40.0 * g   # 40 tonnes Class AA wheeled per IRC 6 Cl. 204.1
+        caa_t_kn = 70.0 * g   # 70 tonnes Class AA tracked per IRC 6 Cl. 204.1
+        sv_kn = 385.0 * g     # 385 tonnes (6 + 9.5 + 9.5 + 20*18) per Cl. 204.5.1
+        fat_kn = sum(IRC6_2017.cl_204_6_fatigue_load()['wheel_loads']) / kN
+
+        return {
+            'class_a': {
+                'name': 'Class A',
+                'total_load_kN': round(class_a_kn, 2),
+                'impact_kind': 'class_a',
+                'braking_default': True,
+                'braking_fraction': 0.20,
+                'clause': 'Cl. 204.1',
+            },
+            '70r_wheeled': {
+                'name': 'Class 70R (Wheeled)',
+                'total_load_kN': round(c70r_w_kn, 2),
+                'impact_kind': 'wheeled',
+                'braking_default': True,
+                'braking_fraction': 0.20,
+                'clause': 'Cl. 204.1',
+            },
+            '70r_tracked': {
+                'name': 'Class 70R (Tracked)',
+                'total_load_kN': round(c70r_t_kn, 2),
+                'impact_kind': 'tracked',
+                'braking_default': True,
+                'braking_fraction': 0.20,
+                'clause': 'Cl. 204.1',
+            },
+            '70r_bogie': {
+                'name': 'Class 70R (Bogie)',
+                'total_load_kN': round(c70r_b_kn, 2),
+                'impact_kind': 'wheeled',
+                'braking_default': True,
+                'braking_fraction': 0.20,
+                'clause': 'Cl. 204.1',
+            },
+            'aa_wheeled': {
+                'name': 'Class AA (Wheeled)',
+                'total_load_kN': round(caa_w_kn, 2),
+                'impact_kind': 'wheeled',
+                'braking_default': True,
+                'braking_fraction': 0.20,
+                'clause': 'Cl. 204.1',
+            },
+            'aa_tracked': {
+                'name': 'Class AA (Tracked)',
+                'total_load_kN': round(caa_t_kn, 2),
+                'impact_kind': 'tracked',
+                'braking_default': True,
+                'braking_fraction': 0.20,
+                'clause': 'Cl. 204.1',
+            },
+            'class_sv': {
+                'name': 'Class SV',
+                'total_load_kN': round(sv_kn, 2),
+                'impact_kind': 'none',
+                'braking_default': False,
+                'braking_fraction': 0.20,
+                'clause': 'Cl. 204.5',
+            },
+            'class_fatigue': {
+                'name': 'Class Fatigue',
+                'total_load_kN': round(fat_kn, 2),
+                'impact_kind': 'class_a',
+                'braking_default': False,
+                'braking_fraction': 0.0,
+                'clause': 'Cl. 204.6',
+            },
+        }
     
     @staticmethod
     def cl_211_3_braking_force_location():
